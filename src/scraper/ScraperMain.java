@@ -1,4 +1,6 @@
 package scraper;
+import java.io.FileOutputStream;
+import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -15,25 +17,26 @@ import edu.stanford.nlp.ie.crf.CRFClassifier;
 import edu.stanford.nlp.ling.CoreLabel;
 
 public class ScraperMain {
+	private double progress = 0.0;
+	
 	public static void main(String args[]) throws Exception{
+		PrintStream out = new PrintStream(new FileOutputStream("error-log.txt"));
+		System.setErr(out);
 		setBannedWords();
 		
 		//obtaining input
 		Scanner input = new Scanner(System.in);
-		System.out.println("How many urls?"); int n;
-		try {
-			n = input.nextInt();
-		} catch(Exception e){
-			System.out.println("Not a number. Terminating...");
-			input.close();
-			System.out.println("closed.");
-			return;
+		ArrayList<String> inputurls = new ArrayList<String>();
+		System.out.println("Input urls:");
+		String nexturl = "";
+		while(true){
+			nexturl = input.nextLine();
+			if(nexturl.equals("")){
+				break;
+			}
+			inputurls.add(nexturl);
 		}
-		String[] urls = new String[n];
-		System.out.println("Input " + n + " urls:");
-		for(int i=0; i<n; i++){
-			urls[i] = input.next();
-		}
+		String[] urls = inputurls.toArray(new String[inputurls.size()]);
 		input.close();
 		
 		//connect to the urls provided, obtain a list of all entries, and fetch embedded hyperlinks as well
@@ -41,7 +44,7 @@ public class ScraperMain {
 		ArrayList<LinkedHashMap<String, String>> all_links = new ArrayList<LinkedHashMap<String, String>>();
 		System.out.println("Fetching hyperlinks...");
 		all_links = getlinks(urls);
-		System.out.println("Finished fetching links");
+		System.out.print("\r100%\nFinished fetching links.\n");
 		
 		//initialize variables
 		ArrayList<String> superlst = new ArrayList<String>();
@@ -54,8 +57,11 @@ public class ScraperMain {
 		
 		//set up date2contents so that it is an array of maps
 		//each map corresponds to a date and an arraylist of entries associated with that date/talk
-		System.out.println("Processing...");
+		System.out.println("Extracting talk information...");
+		int tmpi = 0;
 		for(String htmlcontent : originalcontents){
+			System.out.print("\r" + (50*tmpi++)/originalcontents.size() + "%");
+
 			superlst = splitHTML(htmlcontent);
 			LinkedHashMap<Date, ArrayList<String>> doccontents = new LinkedHashMap<Date, ArrayList<String>>();
 			for(String entry : superlst){
@@ -82,7 +88,6 @@ public class ScraperMain {
 			date2contents.add(doccontents);
 			entrycontents = new ArrayList<String>();
 			tmpdate = null;
-			//System.out.println(htmlcontent);
 		}
 
 		//set up classifiers and more variables for title frequencies
@@ -100,6 +105,8 @@ public class ScraperMain {
 		
 		//use the date2contents to process the seminars and talks information
 		for(LinkedHashMap<Date, ArrayList<String>> doccontents : date2contents){
+			System.out.print("\r" + (50 + ((50*doc_index)/date2contents.size())) + "%");
+
 			Set<Date> date_keys = doccontents.keySet();
 			LinkedHashMap<String, String> doclinks = all_links.get(doc_index++);
 			
@@ -117,11 +124,9 @@ public class ScraperMain {
 				tmpindex = getTitleIndex(date_contents, getSpeakers(date_contents, classifier));
 				safeincrement(freqcounts, tmpindex);
 				updatetitlefreqs(date_contents, entryfreqs);
-				//System.out.println(getTitleIndex(date_contents, getSpeakers(date_contents, classifier)) + " " + date_contents.get(getTitleIndex(date_contents, getSpeakers(date_contents, classifier))));
 			}
-			//System.out.println(freqcounts);
 			
-			//sorts out IndexElements, based on title index frequencies
+			//sort out IndexElements, based on title index frequencies
 			ArrayList<IndexElement> elems = new ArrayList<IndexElement>();
 			for(int i=0; i<freqcounts.size(); i++){
 				elems.add(new IndexElement(i, freqcounts.get(i)));
@@ -201,8 +206,8 @@ public class ScraperMain {
 			all_seminars.add(seminars);
 		}
 		
-		//Finished, output the results to a location
-		System.out.println("Finished processing.");
+		//Finished, output the results in the same directory
+		System.out.print("\r100%\nFinished extraction.\n");
 		writeseminars(all_seminars, urls);
 		writeseminarscsv(all_seminars, urls);
 		seminarsjson(all_seminars, urls);

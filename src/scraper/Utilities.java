@@ -36,7 +36,6 @@ import org.xml.sax.ContentHandler;
 import com.joestelmach.natty.DateGroup;
 import com.joestelmach.natty.Parser;
 
-import edu.emory.mathcs.backport.java.util.concurrent.TimeUnit;
 import edu.stanford.nlp.ie.AbstractSequenceClassifier;
 import edu.stanford.nlp.ling.CoreLabel;
 public class Utilities {
@@ -69,7 +68,8 @@ public class Utilities {
 				"fellowship", "street", "home", "st.", "calendar", "room", "laboratory"));
 		prefixes = new HashSet<String>(Arrays.asList("Ms", "Miss", "Mrs", "Mr", "Ms.", "Miss.", "Mrs.", "Mr.", "Professor"));
 		pronouns = new HashSet<String>(Arrays.asList("he", "she", "I", "me", "her", "him"));
-		badtitlewords = new HashSet<String>(Arrays.asList("please", "university", "visit", "professor", "director", "co-director", "discuss")); //should consist of mostly verbs too
+		badtitlewords = new HashSet<String>(Arrays.asList("please", "university", "visit", "professor", "director", "co-director", "discuss", 
+				"univ", "univ.", "professor,")); //should consist of mostly verbs too
 		badfirstwords = new HashSet<String>(Arrays.asList("sponsor:", "sponsor", "speaker", "this", "speaker:"));
 		colleges = new HashSet<String>(Arrays.asList("UC", "U.C.", "MIT", "Cornell", "Harvard", "Yale", "Mellon"));
 	}
@@ -236,14 +236,17 @@ public class Utilities {
 				return content;
 			}
 			
-			//if entry contains "title:", take text afterwards as title
+			//if entry contains "title:" in beginning, take title as text afterwards, if "title:" comes in end, then let next entry be the title
 			if(content.toLowerCase().contains("title:") && content.length() > 6){
-				return content.substring(content.toLowerCase().indexOf("title:")+6).trim();
-			}
-			
-			//if entry is equal to "title:", let the next entry be the title
-			if(content.equalsIgnoreCase("title:")){
-				return (elem.index + 1 < entrycontents.size()) ? entrycontents.get(elem.index+1) : "";
+				if(content.toLowerCase().substring(content.length()-6).equals("title:")){
+					if(content.length() < 15 || !content.toLowerCase().substring(content.length()-14, content.length()-7).equals("speaker")){
+						return (elem.index + 1 < entrycontents.size()) ? entrycontents.get(elem.index+1) : "";					
+					}
+				}
+				int tmpindex = content.toLowerCase().indexOf("title:");
+				if(tmpindex < 8 || !content.toLowerCase().substring(tmpindex-8, tmpindex-1).equals("speaker")){
+					return content.substring(tmpindex+6).trim();
+				}
 			}
 			
 			//if the previous entry is equal to "title:", the take the current entry
@@ -253,7 +256,15 @@ public class Utilities {
 			
 			//if the previous entry contains "title", take text afterwards as title
 			if(prevcontent.toLowerCase().contains("title:") && prevcontent.length() > 6){
-				return prevcontent.substring(prevcontent.toLowerCase().indexOf("title:")+6).trim();
+				if(prevcontent.toLowerCase().substring(prevcontent.length()-6).equals("title:")){
+					if(prevcontent.length() < 15 || !prevcontent.toLowerCase().substring(prevcontent.length()-14, prevcontent.length()-7).equals("speaker")){
+						return content;
+					}
+				}
+				int tmpindex = prevcontent.toLowerCase().indexOf("title:");
+				if(tmpindex < 8 || !prevcontent.toLowerCase().substring(tmpindex-8, tmpindex-1).equals("speaker")){
+					return prevcontent.substring(tmpindex+6).trim();
+				}								
 			}
 			
 			//assume that anything contained entirely in quotes is a title
@@ -296,10 +307,29 @@ public class Utilities {
 				return i;
 			}
 			if(content.toLowerCase().contains("title:")){
-				return i;
+				if (content.toLowerCase().substring(content.length()-6).equals("title:")){
+					if(content.length() < 15 || !content.toLowerCase().substring(content.length()-14, content.length()-7).equals("speaker")){
+						return i+1;
+					}
+				}
+				int tmpindex = content.toLowerCase().indexOf("title:");
+				if(tmpindex < 8 || !content.toLowerCase().substring(tmpindex-8, tmpindex-1).equals("speaker")){
+					return i;
+				}
 			}
 			if(prevcontent.toLowerCase().trim().equals("title:")){
 				return i;
+			}
+			if(prevcontent.toLowerCase().contains("title:") && prevcontent.length() > 6){
+				if(prevcontent.toLowerCase().substring(prevcontent.length()-6).equals("title:")){
+					if(prevcontent.length() < 15 || !prevcontent.toLowerCase().substring(prevcontent.length()-14, prevcontent.length()-7).equals("speaker")){
+						return i;
+					}
+				}
+				int tmpindex = prevcontent.toLowerCase().indexOf("title:");
+				if(tmpindex < 8 || !prevcontent.toLowerCase().substring(tmpindex-8, tmpindex-1).equals("speaker")){
+					return i-1;
+				}								
 			}
 			if(content.length() > currlen && content.charAt(0) == '"' && content.charAt(content.length()-1) == '"'){
 				return i;
@@ -338,15 +368,15 @@ public class Utilities {
 	//Edit this function to change the conditions (useful for debugging as well).
 	private static boolean canbetitle(int minlen, String content, ArrayList<String> speakers){
 		/*try{ //for debugging only
-			System.out.println(content.substring(0, Math.min(content.length(), 80)) + " " + (StringUtils.countMatches(content, ";") <= StringUtils.countMatches(content, "&nbsp;") + StringUtils.countMatches(content, "&amp;"))
+			System.out.println(content.substring(0, Math.min(content.length(), 200)) + " " + (StringUtils.countMatches(content, ";") <= StringUtils.countMatches(content, "&nbsp;") + StringUtils.countMatches(content, "&amp;"))
 					+ " " + !hastimedate(content) + " " + !hasemail(content) + " " + !content.contains("@") + " " + !content.contains("|") + " " + !hasBannedTitleWord(content) + " " + !hasbadfirstword(content)
-					+ " " + !content.contains("\n") + " " + propercaps(content) + " " + !hasseminarlastword(content) + " " + (StringUtils.countMatches(content, ",") <= 3)
+					+ " " + !content.contains("\n") + " " + propercaps(content) + " " + !hasseminarlastword(content) + " " + (StringUtils.countMatches(content, ",") <= 3) + " " + !badterminal(content)
 					+ " " + ((content.charAt(content.length()-1) != '.') || ((content.charAt(content.length()-1) == '.') && (StringUtils.countMatches(content, " ") < 15)))
-					+ " " + !surroundedparens(content) + " " + !titleisspeaker(content, speakers) + " " + !seminarastitle(content) + " " + !content.trim().substring(0, 3).equals("of "));	
+					+ " " + !surroundedparens(content) + " " + !titleisspeaker(content, speakers) + " " + !seminarastitle(content) + " " + !content.trim().substring(0, 3).equals("of "));
 		} catch (Exception e){}*/
 		return content.length() > minlen && content.length() < 200 && (StringUtils.countMatches(content, ";") <= StringUtils.countMatches(content, "&nbsp;") + StringUtils.countMatches(content, "&amp;"))
 				&& !hastimedate(content) && !hasemail(content) && !content.contains("@") && !content.contains("|") && !hasBannedTitleWord(content) && !hasbadfirstword(content)
-				&& !content.contains("\n") && propercaps(content) && !hasseminarlastword(content) && (StringUtils.countMatches(content, ",") <= 3) 
+				&& !content.contains("\n") && propercaps(content) && !hasseminarlastword(content) && (StringUtils.countMatches(content, ",") <= 3) && !badterminal(content)
 				&& (content.charAt(content.length()-1) != '.' || (content.charAt(content.length()-1) == '.' && StringUtils.countMatches(content, " ") < 15))
 				&& !surroundedparens(content) && !titleisspeaker(content, speakers) && !seminarastitle(content) && !content.trim().substring(0, 3).equals("of ");
 	}
@@ -367,14 +397,32 @@ public class Utilities {
 		return false;
 	}
 	
-	//the seminar need to have the first letter capitalized
+	//the title need to have the first letter of a first word (or hyphenated word)
 	private static boolean propercaps(String content){
-		int i = 0;
-		while(content.substring(i).indexOf(" ") != -1 && 
+		int i = 0; int j = 0; int k = 0;
+		while(((j = content.substring(i).indexOf(" ")) != -1 ||
+				(k = content.substring(i).indexOf("-")) != -1) && 
 				i<content.length() && !Character.isLetter(content.charAt(i))) {
-			i = i + content.substring(i).indexOf(" ") + 1;
+			if(j != -1 && k != -1){
+				if(j == Math.min(k, j)){
+					i = i + j + 1;
+				} else {
+					i = i + k + 1;
+				}
+			} else if (j != -1){
+				i = i + j + 1;
+			} else {
+				i = i + k + 1;
+			}
 		}
 		return (i<content.length() && Character.isUpperCase(content.charAt(i)));
+	}
+	
+	//the title cannot contain certain symbols as the first character
+	private static boolean badterminal(String content){
+		Set<Character> badchars = new HashSet<Character>(Arrays.asList(',','=','-'));
+		content = content.trim();
+		return badchars.contains(content.charAt(0)) || badchars.contains(content.charAt(content.length()-1));
 	}
 
 	//a list of unlikely first words
@@ -508,14 +556,16 @@ public class Utilities {
 			semsjsonobj = new JSONObject();
 			semsjsonarr = new JSONArray();
 		}
-		String filename = "seminars.json";
-		File file = new File(filename);
+		File directory = new File(".");
+		FileUtils.forceMkdir(new File(directory.getCanonicalPath() + File.separator + "talks"));
+		String filename = "seminars-json.txt";
+		File file = new File(directory.getCanonicalPath() + File.separator + "talks" + File.separator  + filename);
 		if (file.exists()) {
 			removefile(filename);
 		}
 		createfile(filename);
 		BufferedWriter writer = new BufferedWriter(new FileWriter(file));
-		System.out.println("Writing to " + filename);
+		System.out.println("Writing to " + file.getAbsolutePath());
 
 		writer.write(allsemsjsonarr.toJSONString());
 		writer.close();		
@@ -533,13 +583,15 @@ public class Utilities {
 		int i = 0;
 		SimpleDateFormat dateFormat = new SimpleDateFormat("MM/dd");
 		String filename = "seminars.csv";
-		File file = new File(filename);
+		File directory = new File(".");
+		FileUtils.forceMkdir(new File(directory.getCanonicalPath() + File.separator + "talks"));
+		File file = new File(directory.getCanonicalPath() + File.separator + "talks" + File.separator  + filename);
 		if (file.exists()) {
 			removefile(filename);
 		}
 		createfile(filename);
 		BufferedWriter writer = new BufferedWriter(new FileWriter(file));
-		System.out.println("Writing to " + filename);
+		System.out.println("Writing to " + file.getAbsolutePath());
 		String webpage = "";
 		writer.write("Landing page,");
 		writer.write("Date,");
@@ -584,13 +636,15 @@ public class Utilities {
 		int i = 0;
 		SimpleDateFormat dateFormat = new SimpleDateFormat("MM/dd/yy");
 		String filename = "seminars.txt";
-		File file = new File(filename);
+		File directory = new File(".");
+		FileUtils.forceMkdir(new File(directory.getCanonicalPath() + File.separator + "talks"));
+		File file = new File(directory.getCanonicalPath() + File.separator + "talks" + File.separator  + filename);
 		if (file.exists()) {
 			removefile(filename);
 		}
 		createfile(filename);
 		BufferedWriter writer = new BufferedWriter(new FileWriter(file));
-		System.out.println("Writing to " + filename);
+		System.out.println("Writing to " + file.getAbsolutePath());
 		for (ArrayList<SeminarEntry> seminars : allseminars) {
 			writer.write("Webpage: " + urls[(i++)] + "\n");
 			for (SeminarEntry seminar : seminars) {
@@ -784,6 +838,7 @@ public class Utilities {
 	public static ArrayList<LinkedHashMap<String, String>> getlinks(String[] urls) {
 		ArrayList<LinkedHashMap<String, String>> result = new ArrayList<LinkedHashMap<String, String>>();
 		for (int i = 0; i < urls.length; i++) {
+			System.out.print("\r" + (100*i)/urls.length + "%");
 			LinkedHashMap<String, String> tmp = new LinkedHashMap<String, String>();
 			try{
 				if (!isPDF(urls[i])) {
@@ -801,6 +856,7 @@ public class Utilities {
 				System.out.println("Failed to fetch links for " + urls[i]);
 				result.add(tmp);
 			}
+			
 		}
 		return result;
 	}
@@ -989,7 +1045,7 @@ public class Utilities {
 			java.util.List<DateGroup> groups = parser.parse(title);
 			for(DateGroup group : groups) {
 				String treetext = group.getSyntaxTree().toStringTree();
-				if(treetext.contains("EXPLICIT")){
+				if(treetext.contains("EXPLICIT") && !title.matches(".*[1-2][0-9]{3}.[1-2][0-9]{3}.*")){
 					return true;
 				}
 			}
@@ -1030,5 +1086,3 @@ public class Utilities {
 		lst.set(pos, lst.get(pos)+1);
 	}
 }
-
-
