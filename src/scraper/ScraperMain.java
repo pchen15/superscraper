@@ -16,18 +16,18 @@ import edu.stanford.nlp.ie.AbstractSequenceClassifier;
 import edu.stanford.nlp.ie.crf.CRFClassifier;
 import edu.stanford.nlp.ling.CoreLabel;
 
-public class ScraperMain {
-	private double progress = 0.0;
-	
+public class ScraperMain {	
 	public static void main(String args[]) throws Exception{
+		setBannedWords(); //sets words that are unlikely to occur in names and titles
+
+		//redirect error messages away from console
 		PrintStream out = new PrintStream(new FileOutputStream("error-log.txt"));
 		System.setErr(out);
-		setBannedWords();
 		
 		//obtaining input
 		Scanner input = new Scanner(System.in);
 		ArrayList<String> inputurls = new ArrayList<String>();
-		System.out.println("Input urls:");
+		System.out.println("Input urls, then press enter twice:");
 		String nexturl = "";
 		while(true){
 			nexturl = input.nextLine();
@@ -92,14 +92,19 @@ public class ScraperMain {
 
 		//set up classifiers and more variables for title frequencies
 		String serializedClassifier = "classifiers/english.all.3class.distsim.crf.ser.gz";
-		AbstractSequenceClassifier<CoreLabel> classifier = CRFClassifier
-                .getClassifierNoExceptions(serializedClassifier);
-		
-		ArrayList<ArrayList<SeminarEntry>> all_seminars = new ArrayList<ArrayList<SeminarEntry>>();
+		AbstractSequenceClassifier<CoreLabel> classifier;
+		try{
+			classifier = CRFClassifier.getClassifierNoExceptions(serializedClassifier);
+		} catch (Exception e){
+			System.out.println("\nMissing " + serializedClassifier);
+			return;
+		}
+
+		ArrayList<ArrayList<SeminarTalk>> all_seminars = new ArrayList<ArrayList<SeminarTalk>>();
 		ArrayList<String> date_contents = new ArrayList<String>();
 		Set<String> tags = new HashSet<String>();
 		Map<String, Integer> entryfreqs = new HashMap<String, Integer>();
-		SeminarEntry seminar = null;
+		SeminarTalk seminartalk = null;
 		String prefix = "";
 		int doc_index = 0;
 		
@@ -110,7 +115,7 @@ public class ScraperMain {
 			Set<Date> date_keys = doccontents.keySet();
 			LinkedHashMap<String, String> doclinks = all_links.get(doc_index++);
 			
-			ArrayList<SeminarEntry> seminars = new ArrayList<SeminarEntry>();
+			ArrayList<SeminarTalk> talks = new ArrayList<SeminarTalk>();
 			
 			HashMap<String, Integer> seen_people = new HashMap<String, Integer>();
 			Set<String> likely_locations = new HashSet<String>();
@@ -122,7 +127,8 @@ public class ScraperMain {
 				date_contents = doccontents.get(date_key);
 				removenbsp(date_contents);
 				tmpindex = getTitleIndex(date_contents, getSpeakers(date_contents, classifier));
-				safeincrement(freqcounts, tmpindex);
+				if(tmpindex > -1) safeincrement(freqcounts, tmpindex);
+				//System.out.println(date_contents.get(tmpindex) + " " + tmpindex);
 				updatetitlefreqs(date_contents, entryfreqs);
 			}
 			
@@ -136,18 +142,18 @@ public class ScraperMain {
 			
 			//create seminar talk objects
 			for(Date date_key : date_keys){
-				seminar = new SeminarEntry();
-				seminar.setdate(date_key);
+				seminartalk = new SeminarTalk();
+				seminartalk.setdate(date_key);
 				
 				date_contents = doccontents.get(date_key);
 				ArrayList<String> tmpspeakers = getSpeakers(date_contents, classifier);
 				
 				//obtain speaker(s)
 				if(tmpspeakers.size() > 0){
-					seminar.speakers = tmpspeakers;
+					seminartalk.speakers = tmpspeakers;
 					for(String person : tmpspeakers){
 						if(doclinks != null && doclinks.get(person) != null){ //add links
-							seminar.addLink(doclinks.get(person));
+							seminartalk.addLink(doclinks.get(person));
 						}
 					}
 				} else {
@@ -164,12 +170,12 @@ public class ScraperMain {
 								prefix = prevword(content, person);
 								if((1 < tmplen || isprefix(prefix)) && tmplen < 5 && personconditions(person)){
 									if(isprefix(prefix) && tmplen < 2) {
-										seminar.addSpeaker(prefix + " " + person);
+										seminartalk.addSpeaker(prefix + " " + person);
 									} else {
-										seminar.addSpeaker(person);
+										seminartalk.addSpeaker(person);
 									}
 									if(doclinks != null && doclinks.get(person) != null){ //add links
-										seminar.addLink(doclinks.get(person));
+										seminartalk.addLink(doclinks.get(person));
 									}
 								}
 							}
@@ -178,9 +184,9 @@ public class ScraperMain {
 				}
 				
 				//obtain title
-				seminar.title = getTitle(date_contents, seminar.speakers, elems, entryfreqs);
-				if(doclinks.get(seminar.title) != null){
-					seminar.addLink(doclinks.get(seminar.title));
+				seminartalk.title = getTitle(date_contents, seminartalk.speakers, elems, entryfreqs);
+				if(doclinks.get(seminartalk.title) != null){
+					seminartalk.addLink(doclinks.get(seminartalk.title));
 				}
 				
 				//record frequency of a person's name and put that name in a list if too frequent
@@ -191,19 +197,20 @@ public class ScraperMain {
 					}
 				}
 				//remove_extraneous_people(date_contents, seminar); not working as intended
-				if(seminar != null && seminar.date != null && seminar.speakers.size() > 0){
-					seminars.add(seminar);
+				if(seminartalk != null && seminartalk.date != null && seminartalk.speakers.size() > 0){
+					talks.add(seminartalk);
 				}
 			}
 					
 			//remove person's name if it occurs too many times
 			for(String str : likely_locations) {
-				remove_person(seminars, str);
+				remove_person(talks, str);
 			}
 			
-			//remove extraneous entries
-			remove_invalid_talks(seminars);
-			all_seminars.add(seminars);
+			//remove extraneous entries and cleans all titles if most titles are blank
+			remove_invalid_talks(talks);
+			cleartitlesmaj(talks);
+			all_seminars.add(talks);
 		}
 		
 		//Finished, output the results in the same directory

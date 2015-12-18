@@ -8,7 +8,10 @@ import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.URISyntaxException;
 import java.net.URL;
+import java.security.CodeSource;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -70,7 +73,7 @@ public class Utilities {
 		pronouns = new HashSet<String>(Arrays.asList("he", "she", "I", "me", "her", "him"));
 		badtitlewords = new HashSet<String>(Arrays.asList("please", "university", "visit", "professor", "director", "co-director", "discuss", 
 				"univ", "univ.", "professor,")); //should consist of mostly verbs too
-		badfirstwords = new HashSet<String>(Arrays.asList("sponsor:", "sponsor", "speaker", "this", "speaker:"));
+		badfirstwords = new HashSet<String>(Arrays.asList("sponsor:", "sponsor", "speaker", "this", "speaker:", "abstract:"));
 		colleges = new HashSet<String>(Arrays.asList("UC", "U.C.", "MIT", "Cornell", "Harvard", "Yale", "Mellon"));
 	}
 
@@ -110,7 +113,7 @@ public class Utilities {
 	 * @return true if and only if person's name meets all conditions.
 	 */
 	public static boolean personconditions(String person){
-		return !isAllUpper(person) && !isAllLower(person) 
+		return !isAllUpper(person) && !isAllLower(person) && propercaps(person)
 				&& !person.matches(".*\\d.*") && !hasBannedWord(person);
 	}
 	
@@ -301,7 +304,7 @@ public class Utilities {
 		int len = 6;
 		int currlen = 0;
 		String prevcontent = "";
-		int i = 0; int title_i = 0;
+		int i = 0; int title_i = -1;
 		for (String content : entrycontents) {
 			if(acceptablepending(prevcontent, content)){
 				return i;
@@ -369,16 +372,16 @@ public class Utilities {
 	private static boolean canbetitle(int minlen, String content, ArrayList<String> speakers){
 		/*try{ //for debugging only
 			System.out.println(content.substring(0, Math.min(content.length(), 200)) + " " + (StringUtils.countMatches(content, ";") <= StringUtils.countMatches(content, "&nbsp;") + StringUtils.countMatches(content, "&amp;"))
-					+ " " + !hastimedate(content) + " " + !hasemail(content) + " " + !content.contains("@") + " " + !content.contains("|") + " " + !hasBannedTitleWord(content) + " " + !hasbadfirstword(content)
+					+ " " + !hastimedate(content) + " " + !content.contains("@") + " " + !content.contains("|") + " " + !hasBannedTitleWord(content) + " " + !hasbadfirstword(content)
 					+ " " + !content.contains("\n") + " " + propercaps(content) + " " + !hasseminarlastword(content) + " " + (StringUtils.countMatches(content, ",") <= 3) + " " + !badterminal(content)
 					+ " " + ((content.charAt(content.length()-1) != '.') || ((content.charAt(content.length()-1) == '.') && (StringUtils.countMatches(content, " ") < 15)))
-					+ " " + !surroundedparens(content) + " " + !titleisspeaker(content, speakers) + " " + !seminarastitle(content) + " " + !content.trim().substring(0, 3).equals("of "));
+					+ " " + !surroundedparens(content) + " " + !titleisspeaker(content, speakers) + " " + !seminarastitle(content));
 		} catch (Exception e){}*/
 		return content.length() > minlen && content.length() < 200 && (StringUtils.countMatches(content, ";") <= StringUtils.countMatches(content, "&nbsp;") + StringUtils.countMatches(content, "&amp;"))
-				&& !hastimedate(content) && !hasemail(content) && !content.contains("@") && !content.contains("|") && !hasBannedTitleWord(content) && !hasbadfirstword(content)
+				&& !hastimedate(content) && !content.contains("@") && !content.contains("|") && !hasBannedTitleWord(content) && !hasbadfirstword(content)
 				&& !content.contains("\n") && propercaps(content) && !hasseminarlastword(content) && (StringUtils.countMatches(content, ",") <= 3) && !badterminal(content)
 				&& (content.charAt(content.length()-1) != '.' || (content.charAt(content.length()-1) == '.' && StringUtils.countMatches(content, " ") < 15))
-				&& !surroundedparens(content) && !titleisspeaker(content, speakers) && !seminarastitle(content) && !content.trim().substring(0, 3).equals("of ");
+				&& !surroundedparens(content) && !titleisspeaker(content, speakers) && !seminarastitle(content);
 	}
 	
 	//essentially a list of unlikely last words
@@ -399,21 +402,23 @@ public class Utilities {
 	
 	//the title need to have the first letter of a first word (or hyphenated word)
 	private static boolean propercaps(String content){
-		int i = 0; int j = 0; int k = 0;
-		while(((j = content.substring(i).indexOf(" ")) != -1 ||
-				(k = content.substring(i).indexOf("-")) != -1) && 
-				i<content.length() && !Character.isLetter(content.charAt(i))) {
-			if(j != -1 && k != -1){
+		int i = 0; 
+		int j = content.substring(i).indexOf(" "); 
+		int k = content.substring(i).indexOf("-");
+		while((j >= i || k >= i) && i<content.length() && !Character.isLetter(content.charAt(i))) {
+			if(j >= i && k >= i){
 				if(j == Math.min(k, j)){
 					i = i + j + 1;
 				} else {
 					i = i + k + 1;
 				}
-			} else if (j != -1){
+			} else if (j >= i){
 				i = i + j + 1;
 			} else {
 				i = i + k + 1;
 			}
+			j = content.substring(i).indexOf(" "); 
+			k = content.substring(i).indexOf("-");
 		}
 		return (i<content.length() && Character.isUpperCase(content.charAt(i)));
 	}
@@ -474,6 +479,13 @@ public class Utilities {
 		}
 		return false;
 	}
+	
+	//retrieves the current directory of the jar file
+	private static String getParentDir() throws UnsupportedEncodingException, URISyntaxException{
+		CodeSource codeSource = Utilities.class.getProtectionDomain().getCodeSource();
+		File jarFile = new File(codeSource.getLocation().toURI().getPath());
+		return jarFile.getParentFile().getPath();
+	}
 
 	/**
 	 * Prints out the ArrayList of Map<date, entrycontents> in a easier to read manner.
@@ -497,12 +509,12 @@ public class Utilities {
 	 * @param allseminars	ArrayList of all talks from all seminars from the urls
 	 * @param urls			landing pages for the seminars
 	 */
-	public static void printseminars(ArrayList<ArrayList<SeminarEntry>> allseminars, String[] urls) {
+	public static void printseminars(ArrayList<ArrayList<SeminarTalk>> allseminars, String[] urls) {
 		int i = 0;
 		SimpleDateFormat dateFormat = new SimpleDateFormat("MM/dd");
-		for (ArrayList<SeminarEntry> seminars : allseminars) {
+		for (ArrayList<SeminarTalk> seminars : allseminars) {
 			System.out.println("From " + urls[(i++)]);
-			for (SeminarEntry seminar : seminars) {
+			for (SeminarTalk seminar : seminars) {
 				System.out.println("Date: " + dateFormat.format(seminar.date));
 				System.out.println("Speaker(s): " + seminar.speakers);
 				System.out.println("Link(s): " + seminar.links);
@@ -522,7 +534,7 @@ public class Utilities {
 	 * @throws Exception 
 	 */
 	@SuppressWarnings("unchecked")
-	public static JSONArray seminarsjson(ArrayList<ArrayList<SeminarEntry>> allseminars, String[] urls) throws Exception{
+	public static void seminarsjson(ArrayList<ArrayList<SeminarTalk>> allseminars, String[] urls) throws Exception{
 		int i=0;
 		SimpleDateFormat dateFormat = new SimpleDateFormat("MM/dd");
 		JSONArray allsemsjsonarr = new JSONArray();
@@ -530,9 +542,9 @@ public class Utilities {
 		JSONArray semsjsonarr = new JSONArray();
 		JSONObject semjsonobj = new JSONObject();
 		JSONArray tmpjsonarr = new JSONArray();
-		for (ArrayList<SeminarEntry> seminars : allseminars) {
+		for (ArrayList<SeminarTalk> seminars : allseminars) {
 			semsjsonobj.put("Webpage", urls[(i++)]);
-			for(SeminarEntry seminar : seminars) {
+			for(SeminarTalk seminar : seminars) {
 				semjsonobj.put("date", dateFormat.format(seminar.date));
 				
 				for(String person : seminar.speakers){
@@ -556,10 +568,9 @@ public class Utilities {
 			semsjsonobj = new JSONObject();
 			semsjsonarr = new JSONArray();
 		}
-		File directory = new File(".");
-		FileUtils.forceMkdir(new File(directory.getCanonicalPath() + File.separator + "talks"));
-		String filename = "seminars-json.txt";
-		File file = new File(directory.getCanonicalPath() + File.separator + "talks" + File.separator  + filename);
+		FileUtils.forceMkdir(new File(getParentDir() + File.separator + "talks"));
+		String filename = "seminars.json";
+		File file = new File(getParentDir() + File.separator + "talks" + File.separator  + filename);
 		if (file.exists()) {
 			removefile(filename);
 		}
@@ -569,7 +580,6 @@ public class Utilities {
 
 		writer.write(allsemsjsonarr.toJSONString());
 		writer.close();		
-		return allsemsjsonarr;
 	}
 	
 	/**
@@ -579,13 +589,12 @@ public class Utilities {
 	 * @param urls			landing pages for the seminars
 	 * @throws Exception
 	 */
-	public static void writeseminarscsv(ArrayList<ArrayList<SeminarEntry>> allseminars, String[] urls) throws Exception{
+	public static void writeseminarscsv(ArrayList<ArrayList<SeminarTalk>> allseminars, String[] urls) throws Exception{
 		int i = 0;
 		SimpleDateFormat dateFormat = new SimpleDateFormat("MM/dd");
 		String filename = "seminars.csv";
-		File directory = new File(".");
-		FileUtils.forceMkdir(new File(directory.getCanonicalPath() + File.separator + "talks"));
-		File file = new File(directory.getCanonicalPath() + File.separator + "talks" + File.separator  + filename);
+		FileUtils.forceMkdir(new File(getParentDir() + File.separator + "talks"));
+		File file = new File(getParentDir() + File.separator + "talks" + File.separator  + filename);
 		if (file.exists()) {
 			removefile(filename);
 		}
@@ -598,9 +607,9 @@ public class Utilities {
 		writer.write("Speakers,");
 		writer.write("Title,");
 		writer.write("Links\n");
-		for (ArrayList<SeminarEntry> seminars : allseminars) {
+		for (ArrayList<SeminarTalk> seminars : allseminars) {
 			webpage = urls[(i++)];
-			for (SeminarEntry seminar : seminars) {
+			for (SeminarTalk seminar : seminars) {
 				writer.write("\"" + webpage + "\",");
 				writer.write("\"" + dateFormat.format(seminar.date) + "\",");
 				writer.write("\"" + seminar.speakers + "\",");
@@ -632,22 +641,21 @@ public class Utilities {
 	 * @param urls			landing pages for the seminars
 	 * @throws Exception
 	 */
-	public static void writeseminars(ArrayList<ArrayList<SeminarEntry>> allseminars, String[] urls) throws Exception{
+	public static void writeseminars(ArrayList<ArrayList<SeminarTalk>> allseminars, String[] urls) throws Exception{
 		int i = 0;
 		SimpleDateFormat dateFormat = new SimpleDateFormat("MM/dd/yy");
 		String filename = "seminars.txt";
-		File directory = new File(".");
-		FileUtils.forceMkdir(new File(directory.getCanonicalPath() + File.separator + "talks"));
-		File file = new File(directory.getCanonicalPath() + File.separator + "talks" + File.separator  + filename);
+		FileUtils.forceMkdir(new File(getParentDir() + File.separator + "talks"));
+		File file = new File(getParentDir() + File.separator + "talks" + File.separator  + filename);
 		if (file.exists()) {
 			removefile(filename);
 		}
 		createfile(filename);
 		BufferedWriter writer = new BufferedWriter(new FileWriter(file));
 		System.out.println("Writing to " + file.getAbsolutePath());
-		for (ArrayList<SeminarEntry> seminars : allseminars) {
+		for (ArrayList<SeminarTalk> seminars : allseminars) {
 			writer.write("Webpage: " + urls[(i++)] + "\n");
-			for (SeminarEntry seminar : seminars) {
+			for (SeminarTalk seminar : seminars) {
 				writer.write("Date: " + dateFormat.format(seminar.date) + "\n");
 				writer.write("Speaker(s): " + seminar.speakers + "\n");
 				writer.write("Link(s): " + seminar.links + "\n");
@@ -665,8 +673,8 @@ public class Utilities {
 	 * @param seminars	ArrayList of seminars
 	 * @param person	a person's name
 	 */
-	public static void remove_person(ArrayList<SeminarEntry> seminars, String person) {
-		for(SeminarEntry seminar : seminars) {
+	public static void remove_person(ArrayList<SeminarTalk> seminars, String person) {
+		for(SeminarTalk seminar : seminars) {
 			seminar.removeSpeaker(person);
 		}
 	}
@@ -677,7 +685,7 @@ public class Utilities {
 	 * 
 	 * @param seminars	ArrayList of seminars
 	 */
-	public static void remove_invalid_talks(ArrayList<SeminarEntry> seminars){
+	public static void remove_invalid_talks(ArrayList<SeminarTalk> seminars){
 		
 		for(int i=0; i<seminars.size(); i++){
 			if((seminars.get(i).title.trim().length() == 0) && links_as_email(seminars.get(i))){
@@ -685,9 +693,9 @@ public class Utilities {
 			}
 		}
 		
-		Iterator<SeminarEntry> sem_iter = seminars.iterator();
+		Iterator<SeminarTalk> sem_iter = seminars.iterator();
 		while(sem_iter.hasNext()){
-			SeminarEntry sem = sem_iter.next();
+			SeminarTalk sem = sem_iter.next();
 			if(sem.speakers.size() == 0){
 				sem_iter.remove();				
 			}
@@ -695,7 +703,7 @@ public class Utilities {
 	}
 	
 	//whether the seminar's links contain a email address or not
-	private static boolean links_as_email(SeminarEntry seminarent){
+	private static boolean links_as_email(SeminarTalk seminarent){
 		for(String link : seminarent.links){
 			if(link.length() > 0 && link.substring(0,7).equals("mailto:")){
 				if(emailvalidate(link.substring(7))){
@@ -709,13 +717,37 @@ public class Utilities {
 	}
 	
 	/**
+	 * Clears the titles if and only the majority of the titles are blank
+	 *
+	 * @param seminars	ArrayList of seminars
+	 */
+	public static void cleartitlesmaj(ArrayList<SeminarTalk> seminars){
+		if(majoritynotitle(seminars)){
+			for(SeminarTalk smtalk : seminars){
+				smtalk.title = "";
+			}
+		}
+	}
+	
+	//returns true if over 50% of the titles are blank
+	private static boolean majoritynotitle(ArrayList<SeminarTalk> seminars){
+		int i=0;
+		for(SeminarTalk smtalk : seminars){
+			if(smtalk.title.length() == 0){
+				i++;
+			}
+		}
+		return 2*i > seminars.size();
+	}
+	
+	/**
 	 * Remove extraneous people from the last-entry to account for run-offs.
-	 * Currently does not function as intended.
+	 * Currently does NOT function as intended.
 	 * 
 	 * @param date_contents	an ArrayList of contents associated to a talk (equivalent to a date)
 	 * @param seminarent	a single talk
 	 */
-	public static void remove_extraneous_people(ArrayList<String> date_contents, SeminarEntry seminarent){
+	public static void remove_extraneous_people(ArrayList<String> date_contents, SeminarTalk seminarent){
 		String title = seminarent.title;
 		ArrayList<String> people = seminarent.speakers;
 		ArrayList<String> newpeople = new ArrayList<String>();
@@ -838,9 +870,9 @@ public class Utilities {
 	public static ArrayList<LinkedHashMap<String, String>> getlinks(String[] urls) {
 		ArrayList<LinkedHashMap<String, String>> result = new ArrayList<LinkedHashMap<String, String>>();
 		for (int i = 0; i < urls.length; i++) {
-			System.out.print("\r" + (100*i)/urls.length + "%");
 			LinkedHashMap<String, String> tmp = new LinkedHashMap<String, String>();
 			try{
+				System.out.print("\r" + (100*i)/urls.length + "%");
 				if (!isPDF(urls[i])) {
 					Document doc = Jsoup.connect(urls[i]).timeout(10000).get();
 					Elements links = doc.select("a[href]");
@@ -853,7 +885,6 @@ public class Utilities {
 				}
 				result.add(tmp);
 			} catch (Exception e){
-				System.out.println("Failed to fetch links for " + urls[i]);
 				result.add(tmp);
 			}
 			
@@ -1025,17 +1056,6 @@ public class Utilities {
 		} else {
 			return "";
 		}
-	}
-	
-	//whether the title contains a person's email address or not
-	private static boolean hasemail(String title){
-		String[] tmps = title.split("\\s+");
-		for(int i=0; i<tmps.length; i++){
-			if(emailvalidate(tmps[i])){
-				return true;
-			}
-		}
-		return false;
 	}
 	
 	//whether the title contains an explicit time/date or not

@@ -2,7 +2,7 @@ package scraper;
 import java.util.ArrayList;
 import java.util.Date;
 
-public class SeminarEntry {
+public class SeminarTalk {
 	Date date;
 	ArrayList<String> speakers; //smart idea to make a speaker an object
 	String location;
@@ -10,7 +10,7 @@ public class SeminarEntry {
 	String abstrct;
 	ArrayList<String> links; //any associated links
 	
-	public SeminarEntry(){
+	public SeminarTalk(){
 		date = null;
 		speakers = new ArrayList<String>();
 		links = new ArrayList<String>();
@@ -19,7 +19,7 @@ public class SeminarEntry {
 		abstrct = null;
 	}
 	
-	public SeminarEntry(Date d, String s, String t){
+	public SeminarTalk(Date d, String s, String t){
 		date = d;
 		speakers = new ArrayList<String>();
 		links = new ArrayList<String>();
