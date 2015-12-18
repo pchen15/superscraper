@@ -1,1 +1,2 @@
 # superscraper
+In order to use the scraper, clone the entire respository to your local directory for development. Then if desired (not necessary), move the .jar and "classifiers" folder into another directory. Run the scraper using the java -jar [your directory]/superscraper.jar command, enter the seminar urls, and press enter again to create the output files.
