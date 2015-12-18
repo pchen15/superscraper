@@ -27,7 +27,7 @@ public class ScraperMain {
 		//obtaining input
 		Scanner input = new Scanner(System.in);
 		ArrayList<String> inputurls = new ArrayList<String>();
-		System.out.println("Input urls, then press enter twice:");
+		System.out.println("Input seminar URLs, then press enter twice:");
 		String nexturl = "";
 		while(true){
 			nexturl = input.nextLine();
